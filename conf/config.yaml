@@ -1,0 +1,52 @@
+# ============================================================
+# Weave Agent Configuration
+# Environment switching via APP_ENV variable
+# ============================================================
+
+local:
+  app:
+    host: 127.0.0.1
+    port: 8080
+    path: /datafabric-weave-agent
+    a2a_url: http://127.0.0.1:8080/datafabric-weave-agent
+  vertexai:
+    google_application_credentials: "<PATH_TO_YOUR_SERVICE_ACCOUNT_KEY>"
+    location: europe-west1
+    project: hsbc-11597561-hydra-dev
+    llm_model: gemini-2.5-flash
+  proxy:
+    cloud_proxy: http://googleapis-dev.gcp.cloud.uk.hsbc:3128
+    no_proxy: .hsbc,127.0.0.1,localhost
+  asset_registry_mcp:
+    transport: streamable-http
+    url: http://dtfabric-dev.hsbc-20016297-datafabric-dev.dev.gcp.cloud.uk.hsbc/datafabric-asset-registry-mcp
+    headers:
+      Authorization: ""
+  knowledge_registry_mcp:
+    transport: streamable-http
+    url: http://dtfabric-dev.hsbc-20016297-datafabric-dev.dev.gcp.cloud.uk.hsbc/datafabric-docusaurus-mcp
+    headers:
+      Authorization: ""
+  # session_db_url: "postgresql+asyncpg://user:pass@localhost:5432/weave_sessions"
+
+dev:
+  app:
+    host: 0.0.0.0
+    port: 8080
+    path: /datafabric-weave-agent
+    a2a_url: http://dtfabric-dev.hsbc-20016297-datafabric-dev.dev.gcp.cloud.uk.hsbc/datafabric-weave-agent
+  vertexai:
+    location: europe-west1
+    project: hsbc-11597561-hydra-dev
+    llm_model: gemini-2.5-flash
+  asset_registry_mcp:
+    transport: streamable-http
+    url: http://dtfabric-dev.hsbc-20016297-datafabric-dev.dev.gcp.cloud.uk.hsbc/datafabric-asset-registry-mcp
+    headers:
+      Authorization: ""
+  knowledge_registry_mcp:
+    transport: streamable-http
+    url: http://dtfabric-dev.hsbc-20016297-datafabric-dev.dev.gcp.cloud.uk.hsbc/datafabric-docusaurus-mcp
+    headers:
+      Authorization: ""
+  # session_db_url: "postgresql+asyncpg://user:pass@weave-dev-db:5432/weave_sessions"

@@ -1,0 +1,20 @@
+# Core
+dynaconf
+certifi
+httpx
+
+# ADK + A2A
+google-adk[a2a]
+google-genai
+
+# Server
+fastapi
+uvicorn[standard]
+starlette
+
+# Session persistence (uncomment when DatabaseSessionService is configured)
+# asyncpg
+# psycopg2-binary
+
+# Internal HSBC package (uncomment for A2A mode with cib_agentic_hub)
+# cib_agentic_hub-0.0.9-py3-none-any.whl[adk, a2a]
