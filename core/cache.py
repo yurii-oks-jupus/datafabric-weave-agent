@@ -1,8 +1,6 @@
 """Response caching layer.
 
-Two-level cache:
-  Level 1 — Exact hash match (free, instant)
-  Level 2 — Semantic similarity via embeddings (costs 1 embed call)
+Exact-hash match cache with TTL and LRU eviction.
 
 Usage:
     cache = ResponseCache(max_size=500)
@@ -35,9 +33,16 @@ class ResponseCache:
     def __init__(self, max_size: int = 500, ttl_seconds: int = 86400):
         """
         Args:
-            max_size: Maximum number of cached responses.
-            ttl_seconds: Time-to-live in seconds (default: 24 hours).
+            max_size: Maximum number of cached responses (>= 1).
+            ttl_seconds: Time-to-live in seconds (>= 1, default: 24 hours).
+
+        Raises:
+            ValueError: If max_size or ttl_seconds is less than 1.
         """
+        if max_size < 1:
+            raise ValueError(f"max_size must be >= 1, got {max_size}")
+        if ttl_seconds < 1:
+            raise ValueError(f"ttl_seconds must be >= 1, got {ttl_seconds}")
         self._cache: OrderedDict[str, CacheEntry] = OrderedDict()
         self._max_size = max_size
         self._ttl = ttl_seconds
@@ -63,13 +68,11 @@ class ResponseCache:
             self._misses += 1
             return None
 
-        # Check TTL
         if time.time() - entry.timestamp > self._ttl:
             del self._cache[key]
             self._misses += 1
             return None
 
-        # Move to end (most recently used)
         self._cache.move_to_end(key)
         entry.hit_count += 1
         self._hits += 1
@@ -81,7 +84,6 @@ class ResponseCache:
         """Store a response in the cache."""
         key = self._hash_query(query)
 
-        # Evict oldest if at capacity
         while len(self._cache) >= self._max_size:
             self._cache.popitem(last=False)
 

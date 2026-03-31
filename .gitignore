@@ -8,3 +8,4 @@ __pycache__/
 *.db
 *.db-*
 .claude/
+*_MASTER_PLAN.md

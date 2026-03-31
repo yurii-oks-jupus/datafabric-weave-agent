@@ -1,5 +1,5 @@
 """Short descriptions used for agent routing. Keep these concise —
-the full system prompts live in prompts/*.md files."""
+the full system prompts live in prompts/{provider}/ files."""
 
 ROOT_AGENT_DESCRIPTION = (
     "Orchestrator that routes user queries to the appropriate specialist agent. "

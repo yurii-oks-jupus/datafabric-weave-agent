@@ -9,11 +9,21 @@ local:
     port: 8080
     path: /datafabric-weave-agent
     a2a_url: http://127.0.0.1:8080/datafabric-weave-agent
+  llm:
+    provider: gemini              # gemini | anthropic | openai | kimi
+    model: gemini-2.5-flash
+    temperature: 0.0
+    anthropic:
+      model: claude-sonnet-4-20250514
+    openai:
+      model: gpt-4o
+    kimi:
+      api_base: https://api.moonshot.cn/v1
+      model: moonshot-v1-128k
   vertexai:
     google_application_credentials: "<PATH_TO_YOUR_SERVICE_ACCOUNT_KEY>"
     location: europe-west1
     project: hsbc-11597561-hydra-dev
-    llm_model: gemini-2.5-flash
   proxy:
     cloud_proxy: http://googleapis-dev.gcp.cloud.uk.hsbc:3128
     no_proxy: .hsbc,127.0.0.1,localhost
@@ -35,10 +45,20 @@ dev:
     port: 8080
     path: /datafabric-weave-agent
     a2a_url: http://dtfabric-dev.hsbc-20016297-datafabric-dev.dev.gcp.cloud.uk.hsbc/datafabric-weave-agent
+  llm:
+    provider: gemini
+    model: gemini-2.5-flash
+    temperature: 0.0
+    anthropic:
+      model: claude-sonnet-4-20250514
+    openai:
+      model: gpt-4o
+    kimi:
+      api_base: https://api.moonshot.cn/v1
+      model: moonshot-v1-128k
   vertexai:
     location: europe-west1
     project: hsbc-11597561-hydra-dev
-    llm_model: gemini-2.5-flash
   asset_registry_mcp:
     transport: streamable-http
     url: http://dtfabric-dev.hsbc-20016297-datafabric-dev.dev.gcp.cloud.uk.hsbc/datafabric-asset-registry-mcp

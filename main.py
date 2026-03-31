@@ -11,34 +11,34 @@ import os
 import sys
 import logging
 
-# Step 1: Set up logging first
 from utils.logging_config import setup_logging
 setup_logging()
 
 logger = logging.getLogger(__name__)
 
-# Step 2: Configure environment (SSL, proxy, Vertex AI)
 from core.config import configure_environment
 configure_environment()
 
-# Step 3: Determine run mode
 RUN_MODE = "a2a" if "--a2a" in sys.argv else "fastapi"
 
-logger.info("Starting Weave Agent (env=%s, mode=%s)", os.environ.get("APP_ENV", "local"), RUN_MODE)
+from core.model import get_provider, get_model
+logger.info(
+    "Starting Weave Agent (env=%s, mode=%s, provider=%s, model=%s)",
+    os.environ.get("APP_ENV", "local"), RUN_MODE, get_provider(), get_model(),
+)
 
 
 def main():
     """Application entry point."""
     from core.config import settings
 
-    host = getattr(settings.app, "host", "0.0.0.0")
-    port = int(getattr(settings.app, "port", 8080))
+    host = settings.app.host
+    port = int(settings.app.port)
 
     if RUN_MODE == "a2a":
-        # A2A Protocol mode
         from server.app import _create_a2a_app
         a2a_config = _create_a2a_app()
-        path = getattr(settings.app, "path", "/datafabric-weave-agent")
+        path = settings.app.path
 
         logger.info("Starting A2A server at %s:%d%s", host, port, path)
         a2a_config["run_fn"](
@@ -49,11 +49,10 @@ def main():
             path=path,
         )
     else:
-        # FastAPI mode (development + legacy)
         import uvicorn
         from server.app import create_app
 
-        app = create_app(mode="fastapi")
+        app = create_app()
         logger.info("Starting FastAPI server at %s:%d", host, port)
         uvicorn.run(app, host=host, port=port)
 

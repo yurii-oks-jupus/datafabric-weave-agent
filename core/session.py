@@ -16,28 +16,26 @@ def create_session_service(db_url: str | None = None):
 
     Args:
         db_url: PostgreSQL connection string for persistent sessions.
-                If None, falls back to InMemorySessionService (dev only).
+                If None, uses InMemorySessionService (dev only).
 
     Returns:
         A session service instance.
+
+    Raises:
+        ImportError: If asyncpg is not installed when db_url is provided.
+        Exception: If the database connection fails when db_url is provided.
     """
     if db_url:
         try:
             from google.adk.sessions import DatabaseSessionService
-
-            logger.info("Using DatabaseSessionService (persistent)")
-            return DatabaseSessionService(db_url=db_url)
         except ImportError:
-            logger.warning(
-                "DatabaseSessionService not available. "
-                "Install asyncpg: pip install asyncpg. "
-                "Falling back to InMemorySessionService."
-            )
-            return InMemorySessionService()
-        except Exception as e:
-            logger.error("Failed to create DatabaseSessionService: %s", e)
-            logger.warning("Falling back to InMemorySessionService.")
-            return InMemorySessionService()
-    else:
-        logger.info("Using InMemorySessionService (non-persistent, dev only)")
-        return InMemorySessionService()
+            raise ImportError(
+                "DatabaseSessionService requires asyncpg. "
+                "Install it with: pip install asyncpg"
+            ) from None
+
+        logger.info("Using DatabaseSessionService (persistent)")
+        return DatabaseSessionService(db_url=db_url)
+
+    logger.info("Using InMemorySessionService (non-persistent, dev only)")
+    return InMemorySessionService()

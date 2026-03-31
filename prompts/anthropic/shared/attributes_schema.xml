@@ -1,0 +1,14 @@
+<table name="attributes">
+<column name="attribute_id">Unique identifier for each attribute</column>
+<column name="business_data_element_definition">Business definition of the attribute</column>
+<column name="attribute_physical_name">Actual attribute name in the data asset</column>
+<column name="created_at">Attributes onboarded timestamp</column>
+<column name="created_by">Attributes onboarded by</column>
+<column name="ldc_status">LDC/Fabric lifecycle status</column>
+<column name="physical_data_type">Data type (e.g., String, Integer)</column>
+<column name="updated_at">Last update timestamp</column>
+<column name="updated_by">Last update made by</column>
+<column name="approval_status">Approval process status</column>
+<column name="attribute_status">Attribute status (e.g., LIVE, REGISTERED)</column>
+<column name="parent_asset_id">Asset ID the attribute belongs to</column>
+</table>

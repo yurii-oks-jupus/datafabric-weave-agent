@@ -3,9 +3,10 @@ dynaconf
 certifi
 httpx
 
-# ADK + A2A
+# ADK + A2A + multi-model
 google-adk[a2a]
 google-genai
+litellm
 
 # Server
 fastapi

@@ -1,0 +1,1 @@
+../openai/registry_agent.md
