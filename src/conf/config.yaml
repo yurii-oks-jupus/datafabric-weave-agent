@@ -21,7 +21,7 @@ local:
       api_base: https://api.moonshot.cn/v1
       model: moonshot-v1-128k
   vertexai:
-    google_application_credentials: "<PATH_TO_YOUR_SERVICE_ACCOUNT_KEY>"
+    google_application_credentials: "C:\\Users\\45195900\\Hadoop\\Artifacts\\keys\\fabric\\rinalds-hydra\\hsbc-11597561-hydra-dev-7d699857da18.json"
     location: europe-west1
     project: hsbc-11597561-hydra-dev
   proxy:
@@ -29,12 +29,12 @@ local:
     no_proxy: .hsbc,127.0.0.1,localhost
   asset_registry_mcp:
     transport: streamable-http
-    url: http://dtfabric-dev.hsbc-20016297-datafabric-dev.dev.gcp.cloud.uk.hsbc/datafabric-asset-registry-mcp
+    url: http://127.0.0.1:8083/datafabric-asset-registry-mcp
     headers:
       Authorization: ""
   knowledge_registry_mcp:
     transport: streamable-http
-    url: http://dtfabric-dev.hsbc-20016297-datafabric-dev.dev.gcp.cloud.uk.hsbc/datafabric-docusaurus-mcp
+    url: http://127.0.0.1:8082/datafabric-docusaurus-mcp
     headers:
       Authorization: ""
   # session_db_url: "postgresql+asyncpg://user:pass@localhost:5432/weave_sessions"
