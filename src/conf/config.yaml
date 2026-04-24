@@ -9,6 +9,7 @@ local:
     port: 8080
     path: /datafabric-weave-agent
     a2a_url: http://127.0.0.1:8080/datafabric-weave-agent
+    default_persona: weave-base     # weave-base | weave-analytics (FAB-2101)
   llm:
     provider: gemini              # gemini | anthropic | openai | kimi
     model: gemini-2.5-flash
@@ -39,12 +40,22 @@ local:
       Authorization: ""
   # session_db_url: "postgresql+asyncpg://user:pass@localhost:5432/weave_sessions"
 
+  # Analytics persona (FAB-2101). Active only when persona=weave-analytics.
+  # Secret: APP_VECTOR_STORES__DB_IAM_PASS set via env var at runtime (D14).
+  vector_stores:
+    db_name: weave-dev
+    db_iam_user: fabric-ai@hsbc-20016297-datafabric-dev.iam
+    db_host: 10.98.45.217
+    db_port: 5432
+    db_iam_pass:
+
 dev:
   app:
     host: 0.0.0.0
     port: 8080
     path: /datafabric-weave-agent
     a2a_url: http://dtfabric-dev.hsbc-20016297-datafabric-dev.dev.gcp.cloud.uk.hsbc/datafabric-weave-agent
+    default_persona: weave-base
   llm:
     provider: gemini
     model: gemini-2.5-flash
@@ -70,3 +81,11 @@ dev:
     headers:
       Authorization: ""
   # session_db_url: "postgresql+asyncpg://user:pass@weave-dev-db:5432/weave_sessions"
+
+  # Analytics persona (FAB-2101). Secret via APP_VECTOR_STORES__DB_IAM_PASS.
+  vector_stores:
+    db_name: weave-dev
+    db_iam_user: fabric-ai@hsbc-20016297-datafabric-dev.iam
+    db_host: 10.98.45.217
+    db_port: 5432
+    db_iam_pass:

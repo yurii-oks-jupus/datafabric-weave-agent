@@ -42,5 +42,16 @@ def create_agent_card() -> a2a_types.AgentCard:
                 ),
                 tags=["data-asset", "metadata", "sql", "registry"],
             ),
+            a2a_types.AgentSkill(
+                id="fabric-analytics",
+                name="Financial Transaction EDA",
+                description=(
+                    "SQL-backed exploratory data analysis over a transactions "
+                    "table: schema discovery, descriptive statistics, "
+                    "segmentation, and fraud/anomaly detection. Available when "
+                    "persona=weave-analytics (FAB-2101)."
+                ),
+                tags=["analytics", "sql", "eda", "fraud", "statistics"],
+            ),
         ],
     )

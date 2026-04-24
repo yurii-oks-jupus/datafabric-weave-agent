@@ -17,5 +17,11 @@ starlette
 # asyncpg
 # psycopg2-binary
 
+# Analytics persona (FAB-2101). Only pulled at install time; no runtime cost
+# for the weave-base persona. pg8000 deliberately chosen over psycopg2-binary
+# (D12 — pure Python driver, no libpq build required).
+sqlalchemy
+pg8000
+
 # Internal HSBC package (uncomment for A2A mode with cib_agentic_hub)
 # cib_agentic_hub-0.0.9-py3-none-any.whl[adk, a2a]
