@@ -164,41 +164,68 @@ fix is on the macOS side, not yours to debug on Windows.
 Assumes you've applied Stages 5-10 changes to your Windows FAB-1417 branch
 (files + paths in [Files changed](#files-changed-in-weave-agent) below).
 
-### Start the server
+### Two-tab setup
+
+The server holds tab 1. You'll send curl/`Invoke-RestMethod` requests from
+tab 2. Open a second PowerShell window before continuing.
+
+```text
+┌── Tab 1 (server) ──────────────────────────┐  ┌── Tab 2 (curl) ──────────┐
+│ cd ...\datafabric-weave-agent\src           │  │ cd anywhere               │
+│ ..\.venv\Scripts\Activate.ps1               │  │ ..\.venv\Scripts\Activate │
+│ python main.py                              │  │ Invoke-RestMethod ...     │
+│ <stays open, prints logs>                   │  │ <one-shot, returns JSON>  │
+└─────────────────────────────────────────────┘  └───────────────────────────┘
+```
+
+`APP_*` env vars are per-process — they only matter in the tab that runs
+`main.py`. Setting them in the curl tab does nothing.
+
+### Step 0 — Start the server (tab 1)
+
+For `weave-base` only (Knowledge + Registry, no DB needed):
 
 ```powershell
 cd C:\Users\45477698\Documents\GitHub\datafabric-weave-agent\src
 ..\.venv\Scripts\Activate.ps1
-$env:APP_VECTOR_STORES__DB_IAM_PASS = "<pw>"
+$env:APP_ENV = "local"
 python main.py
 ```
 
-Expected log lines:
+For `weave-analytics` (also needs the Postgres DB password):
+
+```powershell
+cd C:\Users\45477698\Documents\GitHub\datafabric-weave-agent\src
+..\.venv\Scripts\Activate.ps1
+$env:APP_ENV = "local"
+$env:APP_VECTOR_STORES__DB_IAM_PASS = "<actual password>"
+python main.py
+```
+
+Wait for these log lines (50s on first cold boot is normal — LiteLLM imports):
 
 ```
 INFO  [core.config:80]     Environment configured (env=local, provider=gemini)
 INFO  [__main__:24]        Starting Weave Agent (env=local, mode=fastapi, provider=gemini, model=gemini-2.5-flash)
-INFO  [utils.prompts:88]   Loaded prompt 'knowledge_agent' for provider 'gemini' from default/knowledge_agent.md
-INFO  [utils.prompts:88]   Loaded prompt 'registry_agent' for provider 'gemini' from default/registry_agent.md
-INFO  [utils.prompts:88]   Loaded prompt 'root_agent' for provider 'gemini' from default/root_agent.md
 INFO  [agents.root:21]     Building root agent (persona=weave-base)
-INFO  [server.app:<line>]  (Runner built for weave-base)
+INFO  [agents.knowledge:21] Initializing Knowledge Agent
+INFO  [agents.registry:21] Initializing Registry Agent
 INFO  [core.session:40]    Using InMemorySessionService (non-persistent, dev only)
 INFO  [__main__:55]        Starting FastAPI server at 127.0.0.1:8080
 INFO:  Uvicorn running on http://127.0.0.1:8080
 ```
 
-Note: `analytics_agent` does NOT build at startup. That's correct — it lazy-
-loads on first `weave-analytics` request.
+`analytics_agent` does NOT build at startup. Correct — it lazy-loads on
+first `weave-analytics` request (Stage 6).
 
-### Health check
+### Step 1 — Health check (tab 2)
 
 ```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:8080/datafabric-weave-agent/health"
+Invoke-RestMethod -Uri "http://127.0.0.1:8080/datafabric-weave-agent/health" | ConvertTo-Json -Depth 4
 ```
 
-Expected JSON (newly added fields — `default_persona`, `supported_personas`,
-`ready_personas`):
+Expected (newly added FAB-2101 fields — `default_persona`,
+`supported_personas`, `ready_personas`):
 
 ```json
 {
@@ -212,21 +239,25 @@ Expected JSON (newly added fields — `default_persona`, `supported_personas`,
 }
 ```
 
-### Test 1 — `weave-base` regression (FAB-1417 behaviour)
+### Step 2 — `weave-base` regression (FAB-1417 behaviour, ~5–15s)
+
+The `$body = '...'` form is more readable than backtick-continued
+`Invoke-RestMethod`, and avoids a class of PowerShell quoting bugs.
 
 ```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:8080/datafabric-weave-agent/ask" -Method Post `
-  -Body '{"message":"What datasets are available?","session_id":"reg-1"}' `
-  -ContentType "application/json"
+$body = '{"message":"What datasets are available?","session_id":"reg-1"}'
+Invoke-RestMethod -Uri "http://127.0.0.1:8080/datafabric-weave-agent/ask" `
+  -Method Post -Body $body -ContentType "application/json" |
+  ConvertTo-Json -Depth 4
 ```
 
-Must still work exactly as FAB-1417 today. Server log line:
+Server log line (tab 1):
 
 ```
 req=<id> persona=weave-base cache=miss tool_calls=<N> total_ms=<ms> reply_len=<len> format=structured session=reg-1
 ```
 
-Response JSON:
+Response JSON (tab 2):
 
 ```json
 {
@@ -238,15 +269,36 @@ Response JSON:
 }
 ```
 
-### Test 2 — analytics first call (lazy Runner build)
+If Step 2 returns a real answer, the FAB-1417 base path is intact.
+
+### Step 3 — `weave-analytics` first call (lazy build + DB)
+
+This is the riskiest step — it requires the Postgres DB password and
+network reachability to `vector_stores.db_host` (likely behind HSBC
+corporate network).
+
+If you started the server WITHOUT
+`$env:APP_VECTOR_STORES__DB_IAM_PASS` in Step 0, **stop, set it,
+restart**:
 
 ```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:8080/datafabric-weave-agent/ask" -Method Post `
-  -Body '{"message":"Show transaction count by region","persona":"weave-analytics","session_id":"ana-1"}' `
-  -ContentType "application/json"
+# Tab 1 (server)
+# Press CTRL+C to stop the running server
+$env:APP_VECTOR_STORES__DB_IAM_PASS = "<actual password>"
+python main.py
+# Wait again for `Uvicorn running on http://127.0.0.1:8080`
 ```
 
-Expected in server log:
+Then send the analytics request from tab 2:
+
+```powershell
+$body = '{"message":"Show transaction count by region","persona":"weave-analytics","session_id":"ana-1"}'
+Invoke-RestMethod -Uri "http://127.0.0.1:8080/datafabric-weave-agent/ask" `
+  -Method Post -Body $body -ContentType "application/json" |
+  ConvertTo-Json -Depth 4
+```
+
+Tab 1 should log the lazy build:
 
 ```
 INFO  [server.app:<line>]  Lazy-building Runner for persona=weave-analytics
@@ -256,62 +308,65 @@ INFO  [agents.analytics.schema:<line>]   Initializing Schema Agent
 INFO  [agents.analytics.stats:<line>]    Initializing Stats Agent
 INFO  [agents.analytics.segment:<line>]  Initializing Segment Agent
 INFO  [agents.analytics.fraud:<line>]    Initializing Fraud Agent
-...(Runner.run_async logs, tool calls)...
+...(Runner.run_async logs, SQL via core/tools.py)...
 req=<id> persona=weave-analytics cache=miss tool_calls=<N> total_ms=<ms> reply_len=<len> format=structured session=ana-1
 ```
 
-The response `reply` should include the analytics output (region breakdown
-with counts). Structure should match the default output guidelines: summary →
-details → (optional warnings) → next recommended analysis.
+Response should be analytics output: region breakdown with counts.
+Structure: summary → details → (optional warnings) → next recommended.
 
-### Test 3 — cache hit (same question, same session)
+### Step 4 — cache hit (same question, same session)
 
-Re-run Test 2 verbatim. Expected:
+Re-run Step 3 verbatim from tab 2. Expected:
 
 ```json
 { "cache": "hit", "format": "structured", "reply": "<same as before>" }
 ```
 
-Server log: `cache=hit tool_calls=0 total_ms=<~0>`.
+Server log: `cache=hit tool_calls=0 total_ms=<~0>`. Should round-trip in
+milliseconds, not seconds.
 
-### Test 4 — cache isolation (different session)
-
-```powershell
-# change session_id only
-Invoke-RestMethod -Uri "http://127.0.0.1:8080/datafabric-weave-agent/ask" -Method Post `
-  -Body '{"message":"Show transaction count by region","persona":"weave-analytics","session_id":"ana-2"}' `
-  -ContentType "application/json"
-```
-
-Expected: `"cache":"miss"` — different session must not see ana-1's cached reply (D9).
-
-### Test 5 — format override
+### Step 5 — cache isolation (different session)
 
 ```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:8080/datafabric-weave-agent/ask" -Method Post `
-  -Body '{"message":"Show fraud trends as a table","persona":"weave-analytics"}' `
-  -ContentType "application/json"
+$body = '{"message":"Show transaction count by region","persona":"weave-analytics","session_id":"ana-2"}'
+Invoke-RestMethod -Uri "http://127.0.0.1:8080/datafabric-weave-agent/ask" `
+  -Method Post -Body $body -ContentType "application/json" |
+  ConvertTo-Json -Depth 4
 ```
 
-Expected: `"format":"freeform"` and the reply genuinely in table form (the LLM
-was told to honour the override this turn).
+Expected: `"cache":"miss"` — different `session_id` must not see ana-1's
+cached reply (D9).
 
-### Test 6 — health after traffic
+### Step 6 — format override
 
 ```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:8080/datafabric-weave-agent/health"
+$body = '{"message":"Show fraud trends as a table","persona":"weave-analytics"}'
+Invoke-RestMethod -Uri "http://127.0.0.1:8080/datafabric-weave-agent/ask" `
+  -Method Post -Body $body -ContentType "application/json" |
+  ConvertTo-Json -Depth 4
 ```
 
-`ready_personas` should now include both personas. `cache_stats.size > 0`.
+Expected: `"format":"freeform"` and the reply genuinely in table form
+(D10 — LLM was told to honour the per-turn override).
 
-### Process count
+### Step 7 — health after traffic
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8080/datafabric-weave-agent/health" | ConvertTo-Json -Depth 4
+```
+
+`ready_personas` should now include both personas. `cache_stats.size > 0`,
+`hits > 0`.
+
+### Step 8 — process count
 
 ```powershell
 Get-Process python | Measure-Object
 ```
 
-Expected: 1 python process (or 1 + uvicorn worker child). No second FastAPI
-or FastMCP daemon anywhere.
+Expected: 1 python process (or 1 + uvicorn worker child). No second
+FastAPI or FastMCP daemon anywhere — Stage 4 collapsed to one process.
 
 ---
 
@@ -319,15 +374,15 @@ or FastMCP daemon anywhere.
 
 Mapped from the master plan in `datafabric-analytics-agent/docs/FAB-2101_MASTER_PLAN.md`:
 
-- [ ] `weave-analytics` persona reachable via `/ask` — Test 2.
-- [ ] `weave-base` regression clean — Test 1.
-- [ ] Same question in same session returns `cache=hit` — Test 3.
-- [ ] Same question in different session returns `cache=miss` — Test 4.
-- [ ] Same question yields same structural shape across runs — eye-ball Test 2's reply vs a repeat in a fresh session.
-- [ ] Format override respected per-turn — Test 5.
-- [ ] Single-process startup — process count check.
+- [ ] `weave-analytics` persona reachable via `/ask` — Step 3.
+- [ ] `weave-base` regression clean — Step 2.
+- [ ] Same question in same session returns `cache=hit` — Step 4.
+- [ ] Same question in different session returns `cache=miss` — Step 5.
+- [ ] Same question yields same structural shape across runs — eye-ball Step 3's reply vs a repeat in a fresh session.
+- [ ] Format override respected per-turn — Step 6.
+- [ ] Single-process startup — Step 8.
 - [ ] All 8 known bugs from `ANALYTICS_AGENT.md` closed — addressed in Stage 1.
-- [ ] No regression on Knowledge + Registry — Test 1.
+- [ ] No regression on Knowledge + Registry — Step 2.
 - [ ] README documents the persona switch — still TODO, see [Follow-ups](#follow-ups).
 
 ---
