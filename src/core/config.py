@@ -1,19 +1,26 @@
 """Dynaconf settings loader.
 
-Reads from conf/config.yaml with environment-based switching via APP_ENV.
+Reads from src/conf/config.yaml with environment-based switching via APP_ENV.
+The config path is resolved from `__file__` (not CWD), so the agent works
+whether started from repo root, from inside src/, or from a Docker container
+with WORKDIR=/app.
 """
 
-import os
 import logging
-import certifi
+import os
+from pathlib import Path
 
+import certifi
 from dynaconf import Dynaconf
 
 logger = logging.getLogger(__name__)
 
+# core/config.py → src/core/ → src/. Config lives at src/conf/config.yaml.
+_CONFIG_FILE = Path(__file__).resolve().parent.parent / "conf" / "config.yaml"
+
 settings = Dynaconf(
     envvar_prefix="APP",
-    settings_files=["./conf/config.yaml"],
+    settings_files=[str(_CONFIG_FILE)],
     load_dotenv=True,
     environments=True,
     env_switcher="APP_ENV",
@@ -41,7 +48,7 @@ def configure_environment() -> None:
 
     # Validate provider early
     if provider not in _SUPPORTED_PROVIDERS:
-        raise EnvironmentError(
+        raise OSError(
             f"Unsupported LLM provider: '{provider}'. "
             f"Expected one of: {', '.join(_SUPPORTED_PROVIDERS)}. "
             f"Check 'llm.provider' in conf/config.yaml."
@@ -62,7 +69,9 @@ def configure_environment() -> None:
     # Gemini-specific setup
     if provider == "gemini":
         if app_env == "local":
-            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = settings.vertexai.google_application_credentials
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = (
+                settings.vertexai.google_application_credentials
+            )
         os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "TRUE"
         os.environ["GOOGLE_CLOUD_PROJECT"] = settings.vertexai.project
         os.environ["GOOGLE_CLOUD_LOCATION"] = settings.vertexai.location
@@ -72,7 +81,7 @@ def configure_environment() -> None:
     if env_var:
         api_key = os.environ.get(env_var, "").strip()
         if not api_key:
-            raise EnvironmentError(
+            raise OSError(
                 f"LLM provider '{provider}' requires the {env_var} environment variable. "
                 f"Set it before starting the application."
             )
