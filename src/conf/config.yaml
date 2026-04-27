@@ -22,7 +22,11 @@ local:
       api_base: https://api.moonshot.cn/v1
       model: moonshot-v1-128k
   vertexai:
-    google_application_credentials: "C:\\Users\\45195900\\Hadoop\\Artifacts\\keys\\fabric\\rinalds-hydra\\hsbc-11597561-hydra-dev-7d699857da18.json"
+    # Per-developer SA-key path. NEVER hardcode it — set the env var at runtime:
+    #   PowerShell:  $env:APP_VERTEXAI__GOOGLE_APPLICATION_CREDENTIALS = "C:\path\to\sa.json"
+    #   bash:        export APP_VERTEXAI__GOOGLE_APPLICATION_CREDENTIALS="/path/to/sa.json"
+    # Empty string here means "must be set at runtime" — fail fast if missing.
+    google_application_credentials: ""
     location: europe-west1
     project: hsbc-11597561-hydra-dev
   proxy:
