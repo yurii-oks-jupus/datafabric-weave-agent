@@ -22,11 +22,12 @@ local:
       api_base: https://api.moonshot.cn/v1
       model: moonshot-v1-128k
   vertexai:
-    # Per-developer SA-key path. NEVER hardcode it — set the env var at runtime:
-    #   PowerShell:  $env:APP_VERTEXAI__GOOGLE_APPLICATION_CREDENTIALS = "C:\path\to\sa.json"
-    #   bash:        export APP_VERTEXAI__GOOGLE_APPLICATION_CREDENTIALS="/path/to/sa.json"
-    # Empty string here means "must be set at runtime" — fail fast if missing.
-    google_application_credentials: ""
+    # Filename only — resolved at startup against src/conf/ (the directory of
+    # this YAML). Each developer drops their own copy of the SA key at
+    # src/conf/hsbc-11597561-hydra-dev-7d699857da18.json. No machine-specific
+    # absolute path goes in the repo. Override per-developer if needed via
+    # APP_VERTEXAI__GOOGLE_APPLICATION_CREDENTIALS (absolute path wins).
+    google_application_credentials: "hsbc-11597561-hydra-dev-7d699857da18.json"
     location: europe-west1
     project: hsbc-11597561-hydra-dev
   proxy:

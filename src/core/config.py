@@ -69,9 +69,16 @@ def configure_environment() -> None:
     # Gemini-specific setup
     if provider == "gemini":
         if app_env == "local":
-            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = (
-                settings.vertexai.google_application_credentials
-            )
+            sa_key = settings.vertexai.google_application_credentials
+            # Resolve relative paths against src/conf/ so the YAML can carry
+            # just a filename and each developer drops their own SA key there.
+            # Absolute paths (incl. an explicit env-var override) are used
+            # verbatim.
+            if sa_key:
+                sa_path = Path(sa_key)
+                if not sa_path.is_absolute():
+                    sa_path = _CONFIG_FILE.parent / sa_key
+                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(sa_path)
         os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "TRUE"
         os.environ["GOOGLE_CLOUD_PROJECT"] = settings.vertexai.project
         os.environ["GOOGLE_CLOUD_LOCATION"] = settings.vertexai.location
