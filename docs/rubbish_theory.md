@@ -23,6 +23,40 @@ python -c "import os; from core.config import settings; print('APP_ENV=', os.env
 
 1. **Path resolution**: weave's `core/config.py` uses `settings_files=["./conf/config.yaml"]` — CWD-relative. If anything changes CWD before Dynaconf reads the file, it loads nothing. Fix: change to `__file__`-relative (the `_CONFIG_FILE = Path(__file__).resolve().parent.parent / "conf" / "config.yaml"` pattern).
 2. **`load_dotenv=True`** picks up a `.env` in CWD that overrides `APP_*` keys.
-3. **Stale `__pycache__`** for `config.py` — `find . -name __pycache__ -type d -exec rm -rf {} +` and retry.
+3. **Stale `__pycache__`** for `config.py` — clear and retry (commands below).
+
+## After pulling a fix — clear pycache and rerun
+
+The `__pycache__` folders cache compiled `.pyc` versions of every module.
+A code-level fix in `config.py` won't take effect if Python loads the old
+compiled file. Clear the cache before re-running.
+
+### Windows (PowerShell)
+
+```powershell
+cd ~\Documents\GitHub\datafabric-weave-agent
+git pull origin FAB-1417
+
+Remove-Item -Recurse -Force .\src\core\__pycache__ -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force .\src\__pycache__ -ErrorAction SilentlyContinue
+
+cd src
+python main.py
+```
+
+`-ErrorAction SilentlyContinue` swallows the "path not found" error if the
+folder doesn't exist — handy because the cache is created lazily.
+
+### macOS / Linux (bash / zsh / fish)
+
+```bash
+cd ~/Desktop/datafabric-weave-agent
+git pull origin FAB-1417
+
+find . -type d -name __pycache__ -exec rm -rf {} +
+
+cd src
+python main.py
+```
 
 Delete this file once the bug is resolved.
