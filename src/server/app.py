@@ -5,15 +5,24 @@ _create_a2a_app() returns A2A protocol components for production.
 
 FAB-2101 adds a persona switch — the same /ask endpoint routes to either
 `weave-base` (Knowledge + Registry) or `weave-analytics` (adds the Analytics
-specialist wrapper). Per-persona Runners are cached at startup so a switch
-is a dict lookup, not an agent rebuild.
+specialist wrapper).
+
+FAB-2101 Stage 11 (MCP session lifecycle fix): per-persona Runners are built
+inside a FastAPI `lifespan` async context manager rather than synchronously
+in create_app(). ADK's MCP toolsets open `streamable-http` sessions inside
+anyio task groups; constructing toolsets outside any async context produces
+`ConnectionError: Failed to create MCP session: unhandled errors in a
+TaskGroup` on the first tool call. Anchoring construction in lifespan
+ensures every toolset shares uvicorn's task-group ancestry.
 """
 
 import logging
 import time
 import uuid
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from google.adk.runners import Runner
 from google.genai import types as genai_types
@@ -30,6 +39,8 @@ from core.session import create_session_service
 logger = logging.getLogger(__name__)
 
 response_cache = ResponseCache(max_size=500, ttl_seconds=86400)
+
+_APP_NAME = "weave_agent"
 
 
 class AskRequest(BaseModel):
@@ -53,51 +64,61 @@ class AskResponse(BaseModel):
     format: str = Field(
         default="structured",
         description=(
-            "'structured' if the reply validates against the root schema; "
-            "'freeform' if a format override was detected or parsing failed "
+            "'structured' if the reply matches the default output structure; "
+            "'freeform' if a format override was detected in the user message "
             "(FAB-2101 Sprint 3.3)."
         ),
     )
 
 
-def create_app() -> FastAPI:
-    """Create the FastAPI application."""
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Build per-persona Runners inside an async context (FAB-2101 Stage 11).
+
+    Every MCP toolset created during build_root_agent() inherits this
+    coroutine's anyio task group as its parent. Without that ancestry,
+    `streamable_http_client` raises BaseExceptionGroup on first use.
+    """
     db_url = getattr(settings, "session_db_url", None)
     session_svc = create_session_service(db_url)
 
-    app_name = "weave_agent"
-    default_persona: Persona = getattr(settings.app, "default_persona", "weave-base")
-
-    # Build one Runner per supported persona at startup. Personas not used by
-    # the default are built lazily on first request (see _get_runner).
-    runners: dict[Persona, Runner] = {
-        default_persona: Runner(
-            agent=build_root_agent(default_persona),
-            app_name=app_name,
+    runners: dict[Persona, Runner] = {}
+    for persona in SUPPORTED_PERSONAS:
+        logger.info("Lifespan: building runner for persona=%s", persona)
+        runners[persona] = Runner(
+            agent=build_root_agent(persona),
+            app_name=_APP_NAME,
             session_service=session_svc,
         )
-    }
 
-    def _get_runner(persona: Persona) -> Runner:
-        if persona not in runners:
-            logger.info("Lazy-building Runner for persona=%s", persona)
-            runners[persona] = Runner(
-                agent=build_root_agent(persona),
-                app_name=app_name,
-                session_service=session_svc,
-            )
-        return runners[persona]
+    app.state.runners = runners
+    app.state.session_svc = session_svc
+    app.state.default_persona = getattr(settings.app, "default_persona", "weave-base")
 
-    app = FastAPI(title="Weave — Data Fabric Agent", version="0.1.0")
+    logger.info(
+        "Lifespan: MCP toolsets bound (personas=%s, default=%s); API ready.",
+        sorted(runners.keys()),
+        app.state.default_persona,
+    )
+    try:
+        yield
+    finally:
+        logger.info("Lifespan: API shutting down.")
+
+
+def create_app() -> FastAPI:
+    """Create the FastAPI application."""
+    app = FastAPI(title="Weave — Data Fabric Agent", version="0.1.0", lifespan=lifespan)
 
     @app.get("/datafabric-weave-agent/health")
-    async def health():
+    async def health(request: Request) -> JSONResponse:
+        runners: dict[Persona, Runner] = request.app.state.runners
         return JSONResponse(
             {
                 "status": "ok",
                 "llm_provider": get_provider(),
                 "llm_model": settings.llm.model,
-                "default_persona": default_persona,
+                "default_persona": request.app.state.default_persona,
                 "supported_personas": list(SUPPORTED_PERSONAS),
                 "ready_personas": sorted(runners.keys()),
                 "cache_stats": response_cache.stats,
@@ -105,14 +126,15 @@ def create_app() -> FastAPI:
         )
 
     @app.post("/datafabric-weave-agent/ask", response_model=AskResponse)
-    async def ask(req: AskRequest):
-        # Latency instrumentation (FAB-2101 Sprint 3.1.4). One log line per request
-        # captures request_id, persona, tool-call count, cache status, and total ms.
+    async def ask(req: AskRequest, request: Request) -> AskResponse:
+        # Latency instrumentation (FAB-2101 Sprint 3.1.4). One log line per
+        # request captures request_id, persona, tool-call count, cache
+        # status, and total ms.
         request_id = str(uuid.uuid4())[:8]
         t_start = time.perf_counter()
         user_id = req.user_id or "default_user"
         session_id = req.session_id or str(uuid.uuid4())
-        persona: Persona = req.persona or default_persona
+        persona: Persona = req.persona or request.app.state.default_persona
 
         if persona not in SUPPORTED_PERSONAS:
             raise HTTPException(
@@ -128,18 +150,23 @@ def create_app() -> FastAPI:
             total_ms = int((time.perf_counter() - t_start) * 1000)
             logger.info(
                 "req=%s persona=%s cache=hit tool_calls=0 total_ms=%d",
-                request_id, persona, total_ms,
+                request_id,
+                persona,
+                total_ms,
             )
             return AskResponse(
                 session_id=session_id, user_id=user_id, reply=cached, cache="hit"
             )
 
+        runner: Runner = request.app.state.runners[persona]
+        session_svc = request.app.state.session_svc
+
         existing = await session_svc.get_session(
-            app_name=app_name, user_id=user_id, session_id=session_id
+            app_name=_APP_NAME, user_id=user_id, session_id=session_id
         )
         if existing is None:
             await session_svc.create_session(
-                app_name=app_name, user_id=user_id, session_id=session_id
+                app_name=_APP_NAME, user_id=user_id, session_id=session_id
             )
             logger.info("Created session %s for user %s", session_id, user_id)
 
@@ -148,9 +175,7 @@ def create_app() -> FastAPI:
             parts=[genai_types.Part(text=req.message)],
         )
 
-        runner = _get_runner(persona)
-
-        reply_parts = []
+        reply_parts: list[str] = []
         tool_calls = 0
         try:
             async for event in runner.run_async(
@@ -170,7 +195,11 @@ def create_app() -> FastAPI:
             total_ms = int((time.perf_counter() - t_start) * 1000)
             logger.exception(
                 "req=%s persona=%s cache=miss tool_calls=%d total_ms=%d status=error: %s",
-                request_id, persona, tool_calls, total_ms, exc,
+                request_id,
+                persona,
+                tool_calls,
+                total_ms,
+                exc,
             )
             raise HTTPException(
                 status_code=500,
@@ -178,12 +207,9 @@ def create_app() -> FastAPI:
             ) from exc
 
         reply = reply_parts[-1].strip() if reply_parts else "(no response)"
-
-        # FAB-2101 Sprint 3.3: consistency is enforced by the prompt
-        # (structured sections: summary → details → source → next step).
-        # Override = user asked for a different format this turn. We surface
-        # the classification for observability but do not mutate the reply.
-        response_format = "freeform" if detects_format_override(req.message) else "structured"
+        response_format = (
+            "freeform" if detects_format_override(req.message) else "structured"
+        )
 
         if reply_parts:
             response_cache.put(req.message, reply, session_id=session_id)
@@ -192,8 +218,13 @@ def create_app() -> FastAPI:
         logger.info(
             "req=%s persona=%s cache=miss tool_calls=%d total_ms=%d "
             "reply_len=%d format=%s session=%s",
-            request_id, persona, tool_calls, total_ms, len(reply),
-            response_format, session_id,
+            request_id,
+            persona,
+            tool_calls,
+            total_ms,
+            len(reply),
+            response_format,
+            session_id,
         )
         return AskResponse(
             session_id=session_id,
@@ -206,13 +237,17 @@ def create_app() -> FastAPI:
     return app
 
 
-def _create_a2a_app():
-    """Create A2A protocol application."""
+def _create_a2a_app() -> dict:
+    """Create A2A protocol application (production).
+
+    Note: A2A path is not wrapped in lifespan because `run_adk_a2a_server`
+    manages its own server lifecycle. If MCP TaskGroup errors surface here,
+    we'd refactor at that point — currently out of scope for Stage 11.
+    """
     from cib_agentic_hub.a2a.adk_a2a_server import run_adk_a2a_server
 
     from server.agent_card import create_agent_card
 
-    # A2A mode pins the default persona — callers pick personas via the card.
     default_persona: Persona = getattr(settings.app, "default_persona", "weave-base")
     agent_card = create_agent_card()
 
